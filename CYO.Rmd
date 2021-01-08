@@ -1,0 +1,350 @@
+---
+title: "edX Data-Science CYOProject"
+author: "Aditya Chate"
+date: "08/01/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r rmd_data, include=FALSE}
+#Loading required libraries for the script:
+library(tidyverse)
+library(gridExtra)
+library(caret)
+load("liver_rmd_dat.RData")
+```
+
+## Overview:  
+
+The objective of the project was to demonstrate the performance of a machine 
+learning task on a dataset of one's own choice. The dataset selected for this
+purpose comprised of observational data on Indian patients of liver disease and healthy
+controls, obtained from the kaggle repository (https://www.kaggle.com/uciml/indian-liver-patient-records).
+The data was converted into .RData format and uploaded on a GitHub repository
+for ease of access (https://github.com/adi297/CYOProject.git).  
+
+The data has a total of 583 observations on levels of various proteins obtained
+from tests such as SGOT and SGPT, along with information about age and gender.
+The presence or absence of liver disease is coded as "1" and "2" respectively.  
+
+Based on this examination of the data, machine learning algorithms suitable for
+two-class classification were chosen for training. The __best reported accuracy__
+was __0.75__ (75%). The model with the best accuracy had a __sensitivity__ of __0.95__ (95%)
+and __specificity__ of __0.23__ (23%).  
+
+An __ensemble__ of the models used generated an __accuracy__ of __0.74__ 
+(74%). The __overall mean accuracy__ was __0.73__ (73%) with a __standard deviation__ of
+__0.015__.  
+
+\newpage
+
+## Methodology and Analysis:  
+
+### Structure of the dataset:  
+
+```{r structure, echo=FALSE}
+str(liver_dat)
+```
+The dataset shows observations on blood proteins and age as numeric variables,
+gender as a character variable, and the presence or absence of liver disease 
+coded as "1" and "2" respectively under a numeric variable called *Dataset*.  
+
+### First six rows of the dataset:  
+
+```{r head, echo=FALSE}
+head(liver_dat)
+```
+
+\newpage
+
+Based on a preliminary examination of the dataset, one could consider examining 
+effects of age and gender on the prevalence of liver disease.  
+
+### Age distribution observed in the dataset:  
+
+```{r age, echo=FALSE, fig.height=3}
+liver_dat %>% ggplot(aes(Age)) + 
+  geom_histogram(color = "black", fill = "blue", binwidth = 1)
+```
+The *Age* variable, by itself, seems to show some significant spikes in distribution,
+yet no definite pattern that could be used to model effects in liver disease predictions.  
+
+### Age distribution based on gender:  
+
+```{r age_gender, echo=FALSE, fig.height=3}
+p1 <- liver_dat %>% filter(Gender == "Female") %>% 
+  ggplot(aes(Age)) + geom_histogram(color = "black", fill = "blue", binwidth = 1) +
+  xlab("Female")
+
+p2 <- liver_dat %>% filter(Gender == "Male") %>%
+  ggplot(aes(Age)) + geom_histogram(color = "black", fill = "blue", 
+                                                binwidth = 1) +
+  xlab("Male")
+grid.arrange(p1,p2, ncol = 2)
+```
+The *Age* variable, when grouped based on gender, seems to have a quasi-normal
+distribution for females, but no distinct pattern for males. This might just be a
+chance occurrence considering the small size of the dataset and differences in the
+prevalence of each gender.  
+
+\newpage
+
+Thus, it was decided to determine prevalence based on gender and quantify it as 
+the odds ratio for each gender, thus resulting in a numeric quantity which would be 
+further used with machine learning models.  
+```{r gender_prev, echo=FALSE}
+liver_dat_gender %>% knitr::kable()
+```
+
+###  Creating a dataset suitable for machine learning algorithms:  
+
+The available data on various protein levels, along with a numeric vector having the 
+odds ratio as a quantification of gender effect, and the presence or absence of 
+liver disease coded as "1" and "2" in factor form was used to generate a dataset
+ready for machine learning algorithm training. The latter was stored as a factor
+vector, while the rest of the information was put in numeric matrix with the appropriate
+data wrangling to generate a dataset with the following structure:
+
+### Structure of the dataset to be used for training machine learning algorithms:  
+```{r exp_dat, echo=TRUE}
+str(liv_exp_set)
+```
+
+
+### Calculations of distance between the binary outcomes:
+
+The mean distance between predictors for cases *without liver disease* was __2.94__.  
+```{r dist_abs, echo=TRUE}
+mean(dist_2to2[2:length(dist_2to2)])
+```
+The mean distance between predictors for cases *without liver disease* and *with liver disease*
+was __3.62__.    
+```{r dist_prs, echo=TRUE}
+mean(dist_2to1)
+```
+The rather small difference in the distance between the predictors for either cases 
+is potential indicator of the accuracy of prediction models being sub-optimal.
+
+\newpage
+
+Scaling the predictors revealed the following distribution for distance as can be 
+seen in the following heatmap:  
+
+### Heatmap of distances between scaled predictors:    
+```{r dist_heatmap, echo=FALSE, fig.height=7, fig.width=7}
+heatmap(as.matrix(dist(t(x_scaled))), 
+        col = RColorBrewer::brewer.pal(11, "Spectral"), 
+        labRow = NA, labCol = NA)
+```
+
+\newpage
+
+### Principal Component Analysis:  
+
+Principal Component Analysis of the scaled matrix of predictors revealed nine
+principal components to account for all variability in the data.  
+
+### PCA Summary:  
+
+```{r pca_summary, echo=TRUE}
+summary(pca)
+```
+
+### PCA Plot:  
+
+```{r pca_plot, echo=FALSE}
+plot(pca$sdev, type = "b", xlab = "Principal Component Number")
+title(main = "Principal Component Analysis")
+points(pca$sdev, cex = .5, col = "dark red")
+points(9 , pca$sdev[9], cex = 3, col = "red")
+lines(pca$sdev, col = "blue")
+axis(1, 0:9, col.axis = "blue")
+text(x = 9, y = 0.5, labels = "PC9") 
+text(x = 6.9, y = 0.6, labels = "Full Cumulative Proportion Of Variance")
+```
+
+### PCA Boxplot grouped by presence or absence of disease:  
+
+```{r pca_box, echo=FALSE}
+data.frame(PC = pca_9$PC, Val = pca_9$Val, type = factor(liv_exp_set$y)) %>% 
+  ggplot(aes(PC, Val, fill = type)) + geom_boxplot()
+```
+
+The data was then divided into a training and test set with an 80/20 split which
+ensured equal proportions of cases without liver disease and cases with liver
+disease in them, thus making it suitable for algorithm training.  
+
+```{r case_prop, echo=TRUE}
+#Training and tests sets both contain approximately equal proportions of 
+#cases with and without liver disease:
+
+mean(train_set$y == 2)
+
+mean(test_set$y == 2)
+```
+
+\newpage
+
+## Machine Learning Algorithm Training:  
+
+With the objective of *binary classification* (presence or absence of liver disease), 
+machine learning algorithms suitable for the purpose were chosen.  
+
+The first was a k-means algorithm made with a user-defined function:  
+
+```{r kmeans, eval=FALSE, echo=TRUE}
+#Predictions based on k-means:
+predict_kmeans <- function(x, k) {
+  centers <- k$centers  
+  distances <- sapply(1:nrow(x), function(i){
+    apply(centers, 1, function(y) dist(rbind(x[i,], y)))
+  })
+  max.col(-t(distances))
+}
+
+set.seed(1, sample.kind = "Rounding")
+k <- kmeans(train_x, centers = 13)
+
+res_kmeans <- predict_kmeans(test_x, k)
+pred_kmeans <- ifelse(res_kmeans == 1, "2", "1")
+pred_kmeans <- as.factor(pred_kmeans)
+cm_kmeans <- confusionMatrix(pred_kmeans, test_y)
+cm_kmeans$overall["Accuracy"]
+```
+
+The following models were used without any optimization of tuning parameters:  
+
+* Boosted Classification Trees (ada)
+* AdaBoost Classification Trees (adaboost)
+* Distance Weighted Discrimination with Radial Basis Function Kernel (dwdRadial)  
+
+The following models were used with optimization of tuning parameters:  
+
+* k - nearest neighbors (knn)
+* RandomForest (rf)
+* Oblique Random Forest (ORFpls)  
+
+\newpage
+
+### Tuning Parameter Optimization:  
+
+Optimization of tuning parameters is demonstrated in the following graphs:  
+
+### knn Optimization:  
+
+```{r knn_best, echo=TRUE}
+#Optimal k:
+best_k <- knn_fit$bestTune
+best_k
+
+#k Optimization Plot:
+ggplot(knn_fit)
+```
+
+\newpage
+
+### randomForest Optimization:  
+
+```{r rf_best, echo=TRUE, fig.height=3}
+#Optimal predictors:
+best_mtry_rf <- rf_fit$bestTune
+best_mtry_rf
+
+#Variable Importance:
+varImp(rf_fit)
+
+#Predictor number optimization:
+ggplot(rf_fit)
+```
+
+\newpage
+
+### Oblique randomForest Optimization:  
+
+```{r ORF_best, echo=TRUE, fig.height=3}
+#Optimal predictors:
+best_mtry_ORFpls <- ORFpls_fit$bestTune
+best_mtry_ORFpls
+
+#Variable Importance:
+varImp(ORFpls_fit)
+
+#Predictor number optimization:
+ggplot(ORFpls_fit)
+```
+
+\newpage
+
+## Results:  
+
+The __best accuracy__ was obtained from the __"adaboost"__ model: __0.75__  
+The __ensemble__ yielded an accuracy of: __0.74__
+
+The __overall mean accuracy__ was: __0.73__  
+with a __standard deviation__ of: __0.015__
+
+
+### Final Results:  
+
+```{r final_res, echo=TRUE}
+#Final result table:
+results %>% knitr::kable()
+
+#Overall mean accuracy of all models:
+final_acc <- mean(results$accuracies)
+final_acc
+
+#Overall standard deviation of all models:
+sd_acc <- sd(results$accuracies)
+sd_acc
+```
+
+\newpage
+
+```{r graph, echo=TRUE}
+#Results Graph:
+results_graph <- results %>% ggplot(aes(models, accuracies, fill = models)) + 
+            geom_col() +
+            geom_hline(yintercept = 0.73, lty = 2, size = 1) +
+            geom_text(aes(x = 0, y = 0.66, 
+                          label = "Mean Accuracy = 0.73  Standard Deviation = 0.015"), 
+                      nudge_x = 4.5, nudge_y = 0.02) +
+            geom_text(aes(label = accuracies), nudge_y = -0.4) +
+            geom_errorbar(aes(ymin = final_acc - 2*sd_acc, 
+                              ymax = final_acc + 2*sd_acc))
+results_graph
+```
+
+\newpage
+
+### Best model (AdaBoost Classification Trees) confusionMatrix:  
+
+* Accuracy: 0.75
+* Sensitivity: 0.95
+* Specificity: 0.23
+
+```{r best_mod, echo=TRUE}
+cm_adaboost
+```
+
+\newpage
+
+## Conclusion:  
+
+Machine learning algorithms typically use large datasets to have better accuracy
+of prediction by means of having sufficient data to train on. However, when it comes 
+to patient records, confidentiality is an issue. This might limit the access that is 
+available to patient information. Published results of large clinical trials or observational 
+studies often end up including large quantities of *NA*s in their data due to irregularity in the 
+behavior of patients/volunteers for a study.  
+
+Thus, when limited to small sample sizes, accuracy and other metrics of machine learning algorithms 
+may not be optimal. The rather small difference (0.32) in the distance between the predictors for cases
+without liver disease, and the distance between predictors for cases without liver disease and with liver disease, potentially indicated sub-optimal efficiency of machine learning models. Yet, an __overall mean accuracy__ of __73%__ with a __standard deviation__ as low as __0.015__,  and the __best model__ showing an __accuracy__ of __75%__ with __95% sensitivity__ and __23% specificity__ could be 
+considered as a promising algorithm for scaling up further with more data.  
+
+Future work could involve scaling up to larger data sizes and further optimization of tuning parameters 
+to obtain more accuracy of predictability, and better sensitivity and specificity.
